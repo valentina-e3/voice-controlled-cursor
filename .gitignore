@@ -1,1 +1,4 @@
 model/
+model_40M/
+model_128M/
+mode_testing_results.csv
