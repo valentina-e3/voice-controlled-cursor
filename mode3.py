@@ -1,100 +1,169 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jan 11 18:15:16 2023
+Created on Wed Jan 18 18:25:57 2023
 
 @author: Valentina
 """
-import keyboard
 import win32con
 import win32gui
 import ctypes
-import time
 import speech_recognition as sr
-import mouse
 import multiprocessing
-from ctypes import c_char_p, c_bool
+import keyboard
+import mouse
 import math
-
+import re
+from ctypes import c_char_p, c_bool
+import json
+from word2number import w2n
 
 r = sr.Recognizer()
 mic = sr.Microphone()
-keyWords = ['kreni', 'stani', 'lijevo', 'desno', 'klik']
 
-def keyword_detection(command, exit_program):
+keyWords = {
+    "click": "click",
+    "stop": "stop",
+    "go": "go",
+    "start": "go",
+    "star": "go",
+    "quick": "click",
+    "nope": "stop",
+    "dope": "stop",
+    "spot": "stop",
+    "top": "stop",
+    "scope": "stop",
+}
+
+
+def listen(audio_queue, exit_program):
     with mic as source:
         r.adjust_for_ambient_noise(source)
-        print('Please start speaking.')
-        while True: 
-            if exit_program.value: break
-            audio = r.listen(source, phrase_time_limit=1.5)
+        print("Please start speaking.")
+        while True:
+            if exit_program.value:
+                print("Listen exit program")
+                break
+            audio = r.listen(source, phrase_time_limit=2)
             try:
-                text = r.recognize_google(audio, language = "hr-HR")
-                print("text: " + text)
-                for index, keyWord in enumerate(keyWords):
-                    if keyWord.lower() in text.lower() or keyWord[-3:] in text.lower() or keyWord[:3] in text.lower():
-                        command.value = keyWord
-                        print("Command: {}".format(command.value))
-                        break
-                    
-            except Exception:
-                if not exit_program.value: print('Please speak again.')
-                
+                audio_queue.put_nowait(audio)
+            except:
+                print("Audio queue is full")
+
+
+def keyword_detection(audio_queue, command, angle, exit_program):
+    while True:
+        if exit_program.value:
+            print("Keyword detection exit program")
+            break
+        try:
+            audio = audio_queue.get_nowait()
+        except:
+            continue
+
+        try:
+            cmd = r.recognize_vosk(audio)
+            d = json.loads(cmd)
+            text = d["text"]
+            print("text: " + text)
+            try:
+                num = w2n.word_to_num(text)
+            except:
+                num = 0
+
+            if num > 0:
+                angle.value = (num // 10 * 10) % 360
+                command.value = "stop"
+                cursor_change(angle.value)
+
+            for word, keyWord in keyWords.items():
+                if word.lower() in text.lower():
+                    command.value = keyWord
+                    break
+            print("Command: {}".format(command.value + " " + str(num)))
+        except Exception:
+            if not exit_program.value:
+                print("Please speak again.")
+
+
 def mouse_movement(command, angle, exit_program):
     while True:
-        if exit_program.value: break
-        if command.value == 'klik':
-            mouse.click('left')
-            command.value = 'stani'
-        elif command.value == 'kreni':
+        if exit_program.value:
+            break
+        if command.value == "click":
+            mouse.click("left")
+            command.value = "stop"
+        elif command.value == "go":
             x = 3 * math.cos(math.radians(angle.value))
             y = 3 * math.sin(math.radians(angle.value))
-            mouse.move(x, -y, absolute=False, duration=0.06)
-    
-def cursor_change(command, angle, exit_program):
-    i = 0
-    while True:
-        if exit_program.value: break
-        if command.value == 'lijevo' or command.value == 'desno':
-            angle.value = i * 10
-            custom_cursor = win32gui.LoadImage(0, "cursors/cursor_{}.cur".format(angle.value), win32con.IMAGE_CURSOR, 
-                                        0, 0, win32con.LR_LOADFROMFILE);
-            ctypes.windll.user32.SetSystemCursor(custom_cursor, 32512)
-            ctypes.windll.user32.DestroyCursor(custom_cursor)
-            
-            if command.value == 'lijevo': i += 1
-            else: i -= 1
-            
-            if i == -1: i = 35
-            i %= 36    
-            time.sleep(0.5)
+            mouse.move(x, -y, absolute=False, duration=0.022)
+
+
+def cursor_change(angle):
+    custom_cursor = win32gui.LoadImage(
+        0,
+        "cursors/cursor_{}.cur".format(angle),
+        win32con.IMAGE_CURSOR,
+        0,
+        0,
+        win32con.LR_LOADFROMFILE,
+    )
+    ctypes.windll.user32.SetSystemCursor(custom_cursor, 32512)
+    ctypes.windll.user32.DestroyCursor(custom_cursor)
+
 
 def check_key_press(exit_program):
     while True:
-        if keyboard.is_pressed('q'):
-            print('Exiting the program')
+        if keyboard.is_pressed("q"):
+            print("Exiting the program")
             exit_program.value = True
             break
 
+
 if __name__ == "__main__":
-    cursor = win32gui.LoadImage(0, 32512, win32con.IMAGE_CURSOR, 
-                                0, 0, win32con.LR_SHARED)
-    save_system_cursor = ctypes.windll.user32.CopyImage(cursor, win32con.IMAGE_CURSOR, 
-                                0, 0, win32con.LR_COPYFROMRESOURCE)
-    custom_cursor = win32gui.LoadImage(0, "cursors/cursor_0.cur", win32con.IMAGE_CURSOR, 
-                                    0, 0, win32con.LR_LOADFROMFILE);
+    cursor = win32gui.LoadImage(
+        0, 32512, win32con.IMAGE_CURSOR, 0, 0, win32con.LR_SHARED
+    )
+    save_system_cursor = ctypes.windll.user32.CopyImage(
+        cursor, win32con.IMAGE_CURSOR, 0, 0, win32con.LR_COPYFROMRESOURCE
+    )
+    custom_cursor = win32gui.LoadImage(
+        0, "cursors/cursor_0.cur", win32con.IMAGE_CURSOR, 0, 0, win32con.LR_LOADFROMFILE
+    )
 
     ctypes.windll.user32.SetSystemCursor(custom_cursor, 32512)
-    
-    menager = multiprocessing.Manager()
-    command = menager.Value(c_char_p, "stani")
-    angle = menager.Value('i', 0)
-    exit_program = menager.Value(c_bool, False)
-    
-    p1 = multiprocessing.Process(target=keyword_detection, args=(command, exit_program,))
-    p2 = multiprocessing.Process(target=cursor_change, args=(command, angle, exit_program,))
-    p3 = multiprocessing.Process(target=mouse_movement, args=(command, angle, exit_program,))
+
+    multiprocessing_manager = multiprocessing.Manager()
+    audio_queue = multiprocessing_manager.Queue(maxsize=3)
+    command = multiprocessing_manager.Value(c_char_p, "stopq")
+    angle = multiprocessing_manager.Value("i", 0)
+    exit_program = multiprocessing_manager.Value(c_bool, False)
+
+    p1 = multiprocessing.Process(
+        target=listen,
+        args=(
+            audio_queue,
+            exit_program,
+        ),
+    )
+    p2 = multiprocessing.Process(
+        target=keyword_detection,
+        args=(
+            audio_queue,
+            command,
+            angle,
+            exit_program,
+        ),
+    )
+    p3 = multiprocessing.Process(
+        target=mouse_movement,
+        args=(
+            command,
+            angle,
+            exit_program,
+        ),
+    )
     p4 = multiprocessing.Process(target=check_key_press, args=(exit_program,))
-    
+
     p1.start()
     p2.start()
     p3.start()
@@ -104,13 +173,8 @@ if __name__ == "__main__":
     p2.join()
     p3.join()
     p4.join()
-    
+
     ctypes.windll.user32.SetSystemCursor(save_system_cursor, 32512)
-    ctypes.windll.user32.DestroyCursor(save_system_cursor);
+    ctypes.windll.user32.DestroyCursor(save_system_cursor)
 
-
-
-    
-
-    
-   
+    print("End program")
