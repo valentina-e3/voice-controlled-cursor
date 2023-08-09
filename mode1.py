@@ -36,6 +36,8 @@ keyWords = {
     "life": "left",
     "like": "left",
     "lift": "left",
+    "list": "left",
+    "last": "left",
     "the": "down",
     "nope": "stop",
     "dope": "stop",
