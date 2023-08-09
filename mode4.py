@@ -36,7 +36,7 @@ def listen(audio_queue, exit_program):
             if exit_program.value:
                 print("Listen exit program")
                 break
-            audio = r.listen(source, phrase_time_limit=2)
+            audio = r.listen(source, phrase_time_limit=3)
             try:
                 audio_queue.put_nowait(audio)
             except:
@@ -62,14 +62,14 @@ def keyword_detection(audio_queue, angle, exit_program):
             try:
                 num = w2n.word_to_num(text)
             except:
-                num = 0
+                num = -1
 
             for word, keyWord in keyWords.items():
                 if word.lower() in text.lower():
                     command = keyWord
                     break
             print("Command: {}".format(command + " " + str(num)))
-            if num > 0:
+            if num > -1:
                 if command == "go":
                     x = num * math.cos(math.radians(angle.value))
                     y = num * math.sin(math.radians(angle.value))

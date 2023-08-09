@@ -43,7 +43,7 @@ def listen(audio_queue, exit_program):
             if exit_program.value:
                 print("Listen exit program")
                 break
-            audio = r.listen(source, phrase_time_limit=2)
+            audio = r.listen(source, phrase_time_limit=2.5)
             try:
                 audio_queue.put_nowait(audio)
             except:
@@ -68,9 +68,9 @@ def keyword_detection(audio_queue, command, angle, exit_program):
             try:
                 num = w2n.word_to_num(text)
             except:
-                num = 0
+                num = -1
 
-            if num > 0:
+            if num > -1:
                 angle.value = (num // 10 * 10) % 360
                 command.value = "stop"
                 cursor_change(angle.value)
@@ -93,9 +93,9 @@ def mouse_movement(command, angle, exit_program):
             mouse.click("left")
             command.value = "stop"
         elif command.value == "go":
-            x = 3 * math.cos(math.radians(angle.value))
-            y = 3 * math.sin(math.radians(angle.value))
-            mouse.move(x, -y, absolute=False, duration=0.022)
+            x = 6 * math.cos(math.radians(angle.value))
+            y = 6 * math.sin(math.radians(angle.value))
+            mouse.move(x, -y, absolute=False, duration=0.05)
 
 
 def cursor_change(angle):
@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
     multiprocessing_manager = multiprocessing.Manager()
     audio_queue = multiprocessing_manager.Queue(maxsize=3)
-    command = multiprocessing_manager.Value(c_char_p, "stopq")
+    command = multiprocessing_manager.Value(c_char_p, "stop")
     angle = multiprocessing_manager.Value("i", 0)
     exit_program = multiprocessing_manager.Value(c_bool, False)
 
