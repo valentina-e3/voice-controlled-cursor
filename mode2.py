@@ -13,6 +13,7 @@ from ctypes import c_bool
 from word2number import w2n
 import json
 import math
+import queue
 
 COS_45 = math.cos(math.pi / 4)
 SIN_45 = math.sin(math.pi / 4)
@@ -51,12 +52,12 @@ def listen(audio_queue, exit_program):
         print("Please start speaking.")
         while True:
             if exit_program.value:
-                print("Listen exit program")
+                print("Exit listen process")
                 break
             audio = r.listen(source, phrase_time_limit=4)
             try:
                 audio_queue.put_nowait(audio)
-            except:
+            except queue.Full:
                 print("Audio queue is full")
 
 
@@ -65,17 +66,15 @@ def keyword_detection(audio_queue, exit_program):
     command = ""
     while True:
         if exit_program.value:
-            print("Keyword detection exit program")
+            print("Exit keyword detection process")
             break
         try:
             audio = audio_queue.get_nowait()
-        except:
+        except queue.Empty:
             continue
 
         try:
-            cmd = r.recognize_vosk(audio)
-            d = json.loads(cmd)
-            text = d["text"]
+            text = json.loads(r.recognize_vosk(audio))["text"]
             print("text: " + text)
             try:
                 num = w2n.word_to_num(text)
@@ -141,7 +140,10 @@ if __name__ == "__main__":
             exit_program,
         ),
     )
-    p3 = multiprocessing.Process(target=check_key_press, args=(exit_program,))
+    p3 = multiprocessing.Process(
+        target=check_key_press,
+        args=(exit_program,),
+    )
 
     p1.start()
     p2.start()
@@ -151,4 +153,4 @@ if __name__ == "__main__":
     p2.join()
     p3.join()
 
-    print("End program")
+    print("Exit program")

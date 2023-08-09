@@ -7,10 +7,8 @@ import mouse
 import keyboard
 import multiprocessing
 from ctypes import c_char_p, c_bool
-import time
-from datetime import datetime
-import vosk
 import json
+import queue
 
 r = sr.Recognizer()
 mic = sr.Microphone()
@@ -52,29 +50,27 @@ def listen(audio_queue, exit_program):
         print("Please start speaking.")
         while True:
             if exit_program.value:
-                print("Listen exit program")
+                print("Exit listen process")
                 break
             audio = r.listen(source, phrase_time_limit=1)
             try:
                 audio_queue.put_nowait(audio)
-            except:
+            except queue.Full:
                 print("Audio queue is full")
 
 
 def keyword_detection(audio_queue, command, exit_program):
     while True:
         if exit_program.value:
-            print("Keyword detection exit program")
+            print("Exit keyword detection process")
             break
         try:
             audio = audio_queue.get_nowait()
-        except:
+        except queue.Empty:
             continue
 
         try:
-            cmd = r.recognize_vosk(audio)
-            d = json.loads(cmd)
-            text = d["text"]
+            text = json.loads(r.recognize_vosk(audio))["text"]
             print("text: " + text)
             for word, keyWord in keyWords.items():
                 if word.lower() in text.lower():
@@ -90,7 +86,7 @@ def keyword_detection(audio_queue, command, exit_program):
 def mouse_movement(command, exit_program):
     while True:
         if exit_program.value:
-            print("Mouse movement exit program")
+            print("Exit mouse movement process")
             break
 
         if command.value == "click":
@@ -150,7 +146,10 @@ if __name__ == "__main__":
             exit_program,
         ),
     )
-    p4 = multiprocessing.Process(target=check_key_press, args=(exit_program,))
+    p4 = multiprocessing.Process(
+        target=check_key_press,
+        args=(exit_program,),
+    )
 
     p1.start()
     p2.start()
@@ -162,4 +161,4 @@ if __name__ == "__main__":
     p3.join()
     p4.join()
 
-    print("End program")
+    print("Exit program")

@@ -13,10 +13,10 @@ import multiprocessing
 import keyboard
 import mouse
 import math
-import re
 from ctypes import c_bool
 from word2number import w2n
 import json
+import queue
 
 r = sr.Recognizer()
 mic = sr.Microphone()
@@ -34,29 +34,27 @@ def listen(audio_queue, exit_program):
         print("Please start speaking.")
         while True:
             if exit_program.value:
-                print("Listen exit program")
+                print("Exit listen process")
                 break
             audio = r.listen(source, phrase_time_limit=3)
             try:
                 audio_queue.put_nowait(audio)
-            except:
+            except queue.Full:
                 print("Audio queue is full")
 
 
 def keyword_detection(audio_queue, angle, exit_program):
     while True:
         if exit_program.value:
-            print("Keyword detection exit program")
+            print("Exit keyword detection process")
             break
         try:
             audio = audio_queue.get_nowait()
-        except:
+        except queue.Empty:
             continue
 
         try:
-            cmd = r.recognize_vosk(audio)
-            d = json.loads(cmd)
-            text = d["text"]
+            text = json.loads(r.recognize_vosk(audio))["text"]
             print("text: " + text)
             command = ""
             try:
@@ -76,8 +74,7 @@ def keyword_detection(audio_queue, angle, exit_program):
                     mouse.move(x, -y, absolute=False, duration=num / 1000)
                 else:
                     angle.value = (num // 10 * 10) % 360
-                    command = "stop"
-                    cursor_change(angle.value)
+                    set_custom_cursor(angle.value)
 
             else:
                 if command == "click":
@@ -88,7 +85,7 @@ def keyword_detection(audio_queue, angle, exit_program):
                 print("Please speak again.")
 
 
-def cursor_change(angle):
+def set_custom_cursor(angle):
     custom_cursor = win32gui.LoadImage(
         0,
         "cursors/cursor_{}.cur".format(angle),
@@ -142,7 +139,10 @@ if __name__ == "__main__":
             exit_program,
         ),
     )
-    p3 = multiprocessing.Process(target=check_key_press, args=(exit_program,))
+    p3 = multiprocessing.Process(
+        target=check_key_press,
+        args=(exit_program,),
+    )
 
     p1.start()
     p2.start()
