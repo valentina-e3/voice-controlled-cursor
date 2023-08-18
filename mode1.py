@@ -2,17 +2,16 @@
 """
 @author: Valentina Ecimović
 """
-import speech_recognition as sr
-import mouse
-import keyboard
+
 import multiprocessing
 from ctypes import c_char_p, c_bool
-import json
-import queue
+from shared_processes import listen,keyword_detection, check_key_press, mouse_movement
+from utils import angles_from_commands
 
-r = sr.Recognizer()
-mic = sr.Microphone()
-keyWords = {
+CURSOR_STEP_SIZE = 2
+PHRASE_TIME_LIMIT = 1
+
+keywords = {
     "up left": "up left",
     "up right": "up right",
     "down left": "down left",
@@ -43,106 +42,47 @@ keyWords = {
     "scope": "stop",
 }
 
+cursor_move_keywords = {
+    "up", "down", "left", "right", "up right", "up left", "down right", "down left",
+}
 
-def listen(audio_queue, exit_program):
-    with mic as source:
-        r.adjust_for_ambient_noise(source)
-        print("Please start speaking.")
-        while True:
-            if exit_program.value:
-                print("Exit listen process")
-                break
-            audio = r.listen(source, phrase_time_limit=1)
-            try:
-                audio_queue.put_nowait(audio)
-            except queue.Full:
-                print("Audio queue is full")
-
-
-def keyword_detection(audio_queue, command, exit_program):
-    while True:
-        if exit_program.value:
-            print("Exit keyword detection process")
-            break
-        try:
-            audio = audio_queue.get_nowait()
-        except queue.Empty:
-            continue
-
-        try:
-            text = json.loads(r.recognize_vosk(audio))["text"]
-            print("text: " + text)
-            for word, keyWord in keyWords.items():
-                if word.lower() in text.lower():
-                    command.value = keyWord
-                    print("Command: {}".format(command.value))
-                    break
-
-        except Exception:
-            if not exit_program.value:
-                print("Please speak again.")
-
-
-def mouse_movement(command, exit_program):
-    while True:
-        if exit_program.value:
-            print("Exit mouse movement process")
-            break
-
-        if command.value == "click":
-            mouse.click("left")
-            command.value = "stop"
-        elif command.value == "down":
-            mouse.move(0, 1, absolute=False, duration=0.0075)
-        elif command.value == "left":
-            mouse.move(-1, 0, absolute=False, duration=0.0075)
-        elif command.value == "right":
-            mouse.move(1, 0, absolute=False, duration=0.0075)
-        elif command.value == "up":
-            mouse.move(0, -1, absolute=False, duration=0.0075)
-        elif command.value == "up left":
-            mouse.move(-1, -1, absolute=False, duration=0.0106)
-        elif command.value == "up right":
-            mouse.move(1, -1, absolute=False, duration=0.0106)
-        elif command.value == "down left":
-            mouse.move(-1, 1, absolute=False, duration=0.0106)
-        elif command.value == "down right":
-            mouse.move(1, 1, absolute=False, duration=0.0106)
-
-
-def check_key_press(exit_program):
-    while True:
-        if keyboard.is_pressed("q"):
-            print("Exiting the program")
-            exit_program.value = True
-            break
-
+def mode_processor(args):
+    command = args["command"]
+    return (None, angles_from_commands[command], f"{command}")
 
 if __name__ == "__main__":
     multiprocessing_manager = multiprocessing.Manager()
     audio_queue = multiprocessing_manager.Queue(maxsize=3)
     command = multiprocessing_manager.Value(c_char_p, "stop")
     exit_program = multiprocessing_manager.Value(c_bool, False)
+    angle = multiprocessing_manager.Value("i", 0)
 
     p1 = multiprocessing.Process(
         target=listen,
         args=(
             audio_queue,
+            PHRASE_TIME_LIMIT,
             exit_program,
         ),
     )
     p2 = multiprocessing.Process(
         target=keyword_detection,
         args=(
+            mode_processor,
+            keywords,
             audio_queue,
             command,
+            angle,
             exit_program,
         ),
     )
     p3 = multiprocessing.Process(
         target=mouse_movement,
         args=(
+            cursor_move_keywords,
+            CURSOR_STEP_SIZE,
             command,
+            angle,
             exit_program,
         ),
     )

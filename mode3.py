@@ -7,20 +7,14 @@ Created on Wed Jan 18 18:25:57 2023
 import win32con
 import win32gui
 import ctypes
-import speech_recognition as sr
 import multiprocessing
-import keyboard
-import mouse
-import math
 from ctypes import c_char_p, c_bool
-import json
-from word2number import w2n
-import queue
+from shared_processes import listen, keyword_detection, check_key_press, mouse_movement, set_custom_cursor
 
-r = sr.Recognizer()
-mic = sr.Microphone()
+CURSOR_STEP_SIZE = 6
+PHRASE_TIME_LIMIT = 2.5
 
-keyWords = {
+keywords = {
     "click": "click",
     "stop": "stop",
     "go": "go",
@@ -34,89 +28,19 @@ keyWords = {
     "scope": "stop",
 }
 
+cursor_move_keywords = {
+    "go",
+}
 
-def listen(audio_queue, exit_program):
-    with mic as source:
-        r.adjust_for_ambient_noise(source)
-        print("Please start speaking.")
-        while True:
-            if exit_program.value:
-                print("Exit listen process")
-                break
-            audio = r.listen(source, phrase_time_limit=2.5)
-            try:
-                audio_queue.put_nowait(audio)
-            except queue.Full:
-                print("Audio queue is full")
-
-
-def keyword_detection(audio_queue, command, angle, exit_program):
-    while True:
-        if exit_program.value:
-            print("Exit keyword detection process")
-            break
-        try:
-            audio = audio_queue.get_nowait()
-        except queue.Empty:
-            continue
-
-        try:
-            text = json.loads(r.recognize_vosk(audio))["text"]
-            print("text: " + text)
-            try:
-                num = w2n.word_to_num(text)
-            except:
-                num = -1
-
-            if num > -1:
-                angle.value = (num // 10 * 10) % 360
-                command.value = "stop"
-                set_custom_cursor(angle.value)
-
-            for word, keyWord in keyWords.items():
-                if word.lower() in text.lower():
-                    command.value = keyWord
-                    break
-            print("Command: {}".format(command.value + " " + str(num)))
-        except Exception:
-            if not exit_program.value:
-                print("Please speak again.")
-
-
-def mouse_movement(command, angle, exit_program):
-    while True:
-        if exit_program.value:
-            print("Exit mouse movement process")
-            break
-        if command.value == "click":
-            mouse.click("left")
-            command.value = "stop"
-        elif command.value == "go":
-            x = 6 * math.cos(math.radians(angle.value))
-            y = 6 * math.sin(math.radians(angle.value))
-            mouse.move(x, -y, absolute=False, duration=0.05)
-
-
-def set_custom_cursor(angle):
-    custom_cursor = win32gui.LoadImage(
-        0,
-        "cursors/cursor_{}.cur".format(angle),
-        win32con.IMAGE_CURSOR,
-        0,
-        0,
-        win32con.LR_LOADFROMFILE,
-    )
-    ctypes.windll.user32.SetSystemCursor(custom_cursor, 32512)
-    ctypes.windll.user32.DestroyCursor(custom_cursor)
-
-
-def check_key_press(exit_program):
-    while True:
-        if keyboard.is_pressed("q"):
-            print("Exiting the program")
-            exit_program.value = True
-            break
-
+def mode_processor(args):
+    command = args["command"]
+    num = args["num"]
+    if command == "go":
+        return (None,None,"go")
+    elif num is not None:
+        new_angle_val = (num // 10 * 10) % 360
+        set_custom_cursor(new_angle_val)
+        return ("stop", new_angle_val, str(num))
 
 if __name__ == "__main__":
     cursor = win32gui.LoadImage(
@@ -141,12 +65,15 @@ if __name__ == "__main__":
         target=listen,
         args=(
             audio_queue,
+            PHRASE_TIME_LIMIT,
             exit_program,
         ),
     )
     p2 = multiprocessing.Process(
         target=keyword_detection,
         args=(
+            mode_processor,
+            keywords,
             audio_queue,
             command,
             angle,
@@ -156,6 +83,8 @@ if __name__ == "__main__":
     p3 = multiprocessing.Process(
         target=mouse_movement,
         args=(
+            cursor_move_keywords,
+            CURSOR_STEP_SIZE,
             command,
             angle,
             exit_program,

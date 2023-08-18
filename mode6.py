@@ -5,124 +5,45 @@ Created on Tue Mar 14 08:02:22 2023
 @author: Valentina
 """
 
-import keyboard
 import win32con
 import win32gui
 import ctypes
-import time
-import speech_recognition as sr
-import mouse
 import multiprocessing
 from ctypes import c_char_p, c_bool
-import math
-from word2number import w2n
-import json
-import queue
+from shared_processes import listen,keyword_detection, check_key_press, cursor_change
+from utils import move_mouse_cursor
 
-r = sr.Recognizer()
-mic = sr.Microphone()
-keyWords = {
+PHRASE_TIME_LIMIT = 3
+
+keywords = {
     "click": "click",
     "stop": "stop",
     "left": "left",
     "right": "right",
+    "right": "right",
+    "quick": "click",
+    "top": "stop",
+    "life": "left",
+    "like": "left",
+    "lift": "left",
+    "list": "left",
+    "last": "left",
+    "nope": "stop",
+    "dope": "stop",
+    "spot": "stop",
+    "scope": "stop",
 }
 
-
-def listen(audio_queue, exit_program):
-    with mic as source:
-        r.adjust_for_ambient_noise(source)
-        print("Please start speaking.")
-        while True:
-            if exit_program.value:
-                print("Exit listen process")
-                break
-            audio = r.listen(source, phrase_time_limit=3)
-            try:
-                audio_queue.put_nowait(audio)
-            except queue.Full:
-                print("Audio queue is full")
-
-
-def keyword_detection(audio_queue, command, angle, exit_program):
-    while True:
-        if exit_program.value:
-            print("Exit keyword detection process")
-            break
-        try:
-            audio = audio_queue.get_nowait()
-        except queue.Empty:
-            continue
-
-        try:
-            text = json.loads(r.recognize_vosk(audio))["text"]
-            print("text: " + text)
-            command.value = ""
-            try:
-                num = w2n.word_to_num(text)
-            except:
-                num = -1
-
-            for word, keyWord in keyWords.items():
-                if word.lower() in text.lower():
-                    command.value = keyWord
-                    break
-            print("Command: {}".format(command.value + " " + str(num)))
-            if num > -1:
-                x = num * math.cos(math.radians(angle.value))
-                y = num * math.sin(math.radians(angle.value))
-                mouse.move(x, -y, absolute=False, duration=num / 1000)
-            else:
-                if command.value == "click":
-                    mouse.click("left")
-
-        except Exception:
-            if not exit_program.value:
-                print("Please speak again.")
-
-
-def cursor_change(command, angle, exit_program):
-    while True:
-        if exit_program.value:
-            print("Cursor change exit program")
-            break
-        if command.value == "left" or command.value == "right":
-            if command.value == "left":
-                angle.value += 10
-            else:
-                angle.value -= 10
-
-            if angle.value == -10:
-                angle.value = 350
-            if angle.value == 360:
-                angle.value = 0
-
-            set_custom_cursor(angle.value)
-
-            time.sleep(0.5)
-
-
-def set_custom_cursor(angle):
-    custom_cursor = win32gui.LoadImage(
-        0,
-        "cursors/cursor_{}.cur".format(angle),
-        win32con.IMAGE_CURSOR,
-        0,
-        0,
-        win32con.LR_LOADFROMFILE,
-    )
-    ctypes.windll.user32.SetSystemCursor(custom_cursor, 32512)
-    ctypes.windll.user32.DestroyCursor(custom_cursor)
-
-
-def check_key_press(exit_program):
-    while True:
-        if keyboard.is_pressed("q"):
-            print("Exiting the program")
-            exit_program.value = True
-            break
-
-
+def mode_processor(args):
+    command = args["command"]
+    angle = args["angle"]
+    num = args["num"]
+    if command in ["left", "right"]:
+        return (None, None, command)
+    elif num is not None:
+        move_mouse_cursor(num, angle, num / 1000)
+        return (None, None,f"{num}")
+    
 if __name__ == "__main__":
     cursor = win32gui.LoadImage(
         0, 32512, win32con.IMAGE_CURSOR, 0, 0, win32con.LR_SHARED
@@ -138,7 +59,7 @@ if __name__ == "__main__":
 
     multiprocessing_manager = multiprocessing.Manager()
     audio_queue = multiprocessing_manager.Queue(maxsize=3)
-    command = multiprocessing_manager.Value(c_char_p, "stani")
+    command = multiprocessing_manager.Value(c_char_p, "stop")
     angle = multiprocessing_manager.Value("i", 0)
     exit_program = multiprocessing_manager.Value(c_bool, False)
 
@@ -146,6 +67,7 @@ if __name__ == "__main__":
         target=listen,
         args=(
             audio_queue,
+            PHRASE_TIME_LIMIT,
             exit_program,
         ),
     )
@@ -153,6 +75,8 @@ if __name__ == "__main__":
     p2 = multiprocessing.Process(
         target=keyword_detection,
         args=(
+            mode_processor,
+            keywords,
             audio_queue,
             command,
             angle,
